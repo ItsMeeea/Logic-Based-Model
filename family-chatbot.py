@@ -20,19 +20,18 @@ def parse_input(user_input):
         name2 = input_words[3]
         if(input_words[4][:-1] == "siblings"):
             return ["Q", "siblings", name1, name2]
-        elif(input_words[4][:-1] == "relative"):
+        elif(input_words[4][:-1] == "relatives"):
             return ["Q", "relatives", name1, name2]
         elif(input_words[4] == "the"):
             name3 = input_words[7][:-1]
             return ["Q", "parents", name1, name2, name3]
         elif(input_words[-3] == "children"):
             parent = input_words[-1][:-1]
+            input_substring = user_input[4:user_input.index("and")].rstrip(',')
             idx = input_words.index("and")
-            children_list = user_input.split(", ")
-            children_list = children_list[1:-1]
-            children_list.append(input_words[idx - 1])
+            children_list = [name.strip() for name in input_substring.split(',')]
             children_list.append(input_words[idx + 1])
-            family = ["Q", "children", idx + 1, parent]
+            family = ["Q", "children", idx, parent]
             family.extend(children_list)
             return family
     
@@ -44,10 +43,9 @@ def parse_input(user_input):
 
     elif(input_words[-3] == "children"):
         parent = input_words[-1][:-1]
+        input_substring = user_input[:user_input.index("and")].rstrip(',')
         idx = input_words.index("and")
-        children_list = user_input.split(", ")
-        children_list = children_list[:-1]
-        children_list.append(input_words[idx - 1])
+        children_list = [name.strip() for name in input_substring.split(',')]
         children_list.append(input_words[idx + 1])
         family = ["children", idx + 1, parent]
         family.extend(children_list)
@@ -84,7 +82,7 @@ def process_questions(keywords):
     prolog.consult("knowledge_base.pl")
 
     query = ""
-
+    
     if(keywords[0] == "Q"):
         match(keywords[1]):
             case "siblings":
@@ -127,10 +125,13 @@ def process_questions(keywords):
     return None # TODO fix for error checkin
 
 def encode_rules():
-    # TODO ayusin pag may kulang
+    # TODO ayusin
+    # FYI:
     # siblings share at least one parent daw
     # mali ang mother :- parent
-    # fyi mali pag lagay both parent:child and child:parent
+    # mali pag lagay both parent:child and child:parent
+    # some cause problems because the right sides (sis, bro, etc)
+        # were never declared sa left side
 
     rules = r"""sibling(Z, Y) :- parent(X, Y), child(Z, X).
 parent(X, Y) :- child(Y, X).
@@ -141,28 +142,26 @@ relative(X, Y) :- grandmother(X, Y).
 relative(X, Y) :- grandfather(X, Y).
 relative(X, Y) :- aunt(X, Y).
 relative(X, Y) :- uncle(X, Y).
+sibling(X, Y) :- sister(X, Y).
+sibling(X, Y) :- brother(X, Y).
+parent(X, Y) :- mother(X, Y).
+parent(X, Y) :- father(X, Y).
+parent(X, Y) :- daughter(Y, X).
+parent(X, Y) :- son(Y, X).
+uncle(Z, Y) :- grandmother(X, Y), son(Z, X).
+uncle(Z, Y) :- grandfather(X, Y), son(Z, X).
+uncle(Z, Y) :- parent(X, Y), brother(Z, X).
+aunt(Z, Y) :- grandmother(X, Y), daughter(Z, X).
+aunt(Z, Y) :- grandfather(X, Y), daughter(Z, X).
+aunt(Z, Y) :- parent(X, Y), sister(Z, X).
+grandmother(Z, Y) :- parent(X, Y), mother(Z, X).
+grandfather(Z, Y) :- parent(X, Y), father(Z, X).
+child(X, Y) :- mother(Y, X).
+child(X, Y) :- father(Y, X).
+child(X, Y) :- daughter(X, Y).
+child(X, Y) :- son(X, Y).
 """
 
-    """
-    sibling(X, Y) :- sister(X, Y).
-    sibling(X, Y) :- brother(X, Y).
-    parent(X, Y) :- mother(X, Y).
-    parent(X, Y) :- father(X, Y).
-    parent(X, Y) :- daughter(Y, X).
-    parent(X, Y) :- son(Y, X).
-    uncle(Z, Y) :- grandmother(X, Y), son(Z, X).
-    uncle(Z, Y) :- grandfather(X, Y), son(Z, X).
-    uncle(Z, Y) :- parent(X, Y), brother(Z, X).
-    aunt(Z, Y) :- grandmother(X, Y), daughter(Z, X).
-    aunt(Z, Y) :- grandfather(X, Y), daughter(Z, X).
-    aunt(Z, Y) :- parent(X, Y), sister(Z, X).
-    grandmother(Z, Y) :- parent(X, Y), mother(Z, X).
-    grandfather(Z, Y) :- parent(X, Y), father(Z, X).
-    child(X, Y) :- mother(Y, X).
-    child(X, Y) :- father(Y, X).
-    child(X, Y) :- daughter(X, Y).
-    child(X, Y) :- son(X, Y).
-    """
     with open("knowledge_base.pl", "w") as f:
             f.write(rules)
 
