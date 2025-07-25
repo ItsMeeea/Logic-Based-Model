@@ -1,0 +1,20 @@
+INSTRUCTIONS TO RUN THE FAMILY CHATBOT
+
+1. Install SWI-Prolog: https://www.swi-prolog.org/Download.html
+2. Install dependencies:
+   pip install pyswip customtkinter
+
+3. Make sure these files are in the same directory:
+   - chatbpt_gui.py
+   - chatbot.py
+   - family.pl
+
+4. Run the chatbot:
+   python chatbot_gui.py
+
+5. Type statements or questions like:
+   > Alice is the mother of Bob.
+   > Who are the children of Alice?
+   > Is Bob the son of Alice?
+
+Type 'exit' or 'quit' to end the session.
