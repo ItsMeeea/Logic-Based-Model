@@ -56,17 +56,16 @@ relative(X, Y) :- uncle(Y, X).
 relative(X, Y) :- aunt(Y, X).
 
 % Helper predicates for validation
-valid_name(X) :- atom(X), atom_length(X, L), L > 0.
+% valid_name(X) :- atom(X), atom_length(X, L), L > 0.
 
-% Loop and sanity check prevention
-impossible(parent(X, X)).
-impossible(ancestor(X, X)).
+% Loop prevention
+% impossible(parent(X, X)).
+% impossible(ancestor(X, X)).
 
 % Additional relationship constraints
 % Rule to check for gender conflicts (called explicitly, not as constraint)
 gender_conflict(X) :- male(X), female(X).
 
 % Prevent impossible age relationships (simplified)
-% These would need more complex logic in a real system
-impossible_age(grandfather(X, Y), father(Y, X)).
-impossible_age(grandmother(X, Y), mother(Y, X)).
+% impossible_age(grandfather(X, Y), father(Y, X)).
+% impossible_age(grandmother(X, Y), mother(Y, X)).
