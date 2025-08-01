@@ -38,7 +38,7 @@ aunt(A, N) :- female(A), sibling(A, P), parent(P, N).
 
 % Reverse definitions
 child(C, P) :- parent(P, C).
-children(CList, P) :- forall(member(C, CList), parent(P, C)).
+% children(CList, P) :- forall(member(C, CList), parent(P, C)).
 
 % Ancestor relationship (for detecting cycles)
 ancestor(A, D) :- parent(A, D).
@@ -55,16 +55,15 @@ relative(X, Y) :- aunt(X, Y).
 relative(X, Y) :- uncle(Y, X).
 relative(X, Y) :- aunt(Y, X).
 
+% Rule to check for gender conflicts (called explicitly, not as constraint)
+gender_conflict(X) :- male(X), female(X).
+
 % Helper predicates for validation
 % valid_name(X) :- atom(X), atom_length(X, L), L > 0.
 
 % Loop prevention
 % impossible(parent(X, X)).
 % impossible(ancestor(X, X)).
-
-% Additional relationship constraints
-% Rule to check for gender conflicts (called explicitly, not as constraint)
-gender_conflict(X) :- male(X), female(X).
 
 % Prevent impossible age relationships (simplified)
 % impossible_age(grandfather(X, Y), father(Y, X)).
