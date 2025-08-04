@@ -240,7 +240,7 @@ def handle_sibling_with_smart_inference(person1, person2, rel):
         
         parent_names = ', '.join(p.capitalize() for p in all_parents)
         return f"OK! I learned that both {person1.capitalize()} and {person2.capitalize()} have {parent_names} as their parents, making them full siblings."
-
+    
 def check_sibling_contradiction(person1, person2):
     """Check if making person1 and person2 siblings would create a contradiction"""
     person1, person2 = person1.lower(), person2.lower()
@@ -283,7 +283,6 @@ def check_sibling_contradiction(person1, person2):
         
     except Exception:
         return False
-    
 # === Statement Parsing ===
 
 def parse_statement(prompt):
@@ -294,7 +293,7 @@ def parse_statement(prompt):
         return "Please tell me something!"
 
     patterns = [
-        (r"(\w+) is (?:a |an |the )?(\w+) of (\w+)", handle_single_relation),
+        (r"(\w+) is (?:a |an |the )?(father|mother|parent|child|son|daughter|brother|sister|sibling|uncle|aunt|grandfather|grandmother|husband|wife|spouse|nephew|niece|cousin) of (\w+)", handle_single_relation),
         (r"(\w+) and (\w+) are siblings", handle_siblings),
         (r"(\w+) and (\w+) are (brothers?|sisters?) of (\w+)", handle_siblings_of),
         (r"(\w+) and (\w+) are cousins", handle_cousins),
@@ -800,7 +799,7 @@ def parse_question(prompt):
         (r"Are (\w+) and (\w+) (?:the )?parents of (\w+)", handle_yesno_parents),
         (r"Are (\w+), (\w+)(?:, and (\w+))? children of (\w+)", handle_yesno_children),
         (r"Are (\w+) and (\w+) children of (\w+)", handle_yesno_two_children),
-        (r"(\w+) is (?:a |an |the )?(\w+) of (\w+)", handle_list_query),
+        (r"Who (?:is|are) (?:the |a |an )?(father|mother|parent|child|son|daughter|brother|sister|sibling|siblings|brothers|sisters|uncle|aunt|grandfather|grandmother|husband|wife|spouse|nephew|niece|cousin|children|parents|sons|daughters|uncles|aunts|nephews|nieces|cousins) of (\w+)", handle_list_query),
         (r"Who is (\w+) married to", handle_who_married_to),
         (r"Who is the spouse of (\w+)", handle_who_spouse),          
         (r"Are (\w+) and (\w+) relatives", handle_relative_question),
