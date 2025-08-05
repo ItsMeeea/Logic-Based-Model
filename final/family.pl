@@ -9,6 +9,7 @@
 :- dynamic nephew/2.   
 :- dynamic niece/2.     
 :- dynamic cousin/2.
+:- dynamic sibling_deferred/2.
 
 :- table father/2.
 :- table mother/2.
@@ -35,6 +36,7 @@ daughter(C, P) :- female(C), mother(P, C).
 sibling(X, Y) :- parent(P, X), parent(P, Y), X \= Y.
 sibling(X, Y) :- father(P, X), father(P, Y), X \= Y.
 sibling(X, Y) :- mother(P, X), mother(P, Y), X \= Y.
+sibling(X, Y) :- sibling_deferred(X, Y).
 
 brother(B, S) :- male(B), sibling(B, S).
 sister(S, B) :- female(S), sibling(S, B).
@@ -48,6 +50,10 @@ grandparent(G, C) :- mother(G, P), parent(P, C).
 
 grandfather(G, C) :- male(G), grandparent(G, C).
 grandmother(G, C) :- female(G), grandparent(G, C).
+
+grandchild(GC, GP) :- grandparent(GP, GC).
+grandson(GS, GP) :- male(GS), grandparent(GP, GS).
+granddaughter(GD, GP) :- female(GD), grandparent(GP, GD).
 
 % Uncle and aunt relationships
 uncle(U, N) :- male(U), sibling(U, P), parent(P, N).
@@ -111,6 +117,12 @@ relative(X, Y) :- mother(Y, X).
 relative(X, Y) :- sibling(X, Y).
 relative(X, Y) :- grandparent(X, Y).
 relative(X, Y) :- grandparent(Y, X).
+relative(X, Y) :- grandchild(X, Y).
+relative(X, Y) :- grandchild(Y, X).
+relative(X, Y) :- grandson(X, Y).
+relative(X, Y) :- grandson(Y, X).
+relative(X, Y) :- granddaughter(X, Y).
+relative(X, Y) :- granddaughter(Y, X).
 relative(X, Y) :- uncle(X, Y).
 relative(X, Y) :- aunt(X, Y).
 relative(X, Y) :- uncle(Y, X).

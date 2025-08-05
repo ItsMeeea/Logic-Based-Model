@@ -202,7 +202,7 @@ def get_parents(person):
     return {r["P"] for r in result if "P" in r}
 
 def handle_sibling_with_smart_inference(person1, person2, rel):
-    """Handle sibling relationships with automatic parent inference"""
+    """Handle sibling relationships with deferred parent inference"""
     
     if check_sibling_contradiction(person1, person2):
         return "That's impossible!"
@@ -211,36 +211,171 @@ def handle_sibling_with_smart_inference(person1, person2, rel):
     parents1 = get_parents(person1)
     parents2 = get_parents(person2)
     
-    # Case 1: They already share at least one parent
+    print(f"Debug: {person1} has parents: {parents1}")
+    print(f"Debug: {person2} has parents: {parents2}")
+    
+    # Case 1: They already share at least one parent - they're already siblings
     shared_parents = parents1.intersection(parents2)
     if shared_parents:
+        print(f"Debug: {person1} and {person2} already share parents: {shared_parents}")
         return "OK! I already knew they were siblings through their shared parent(s)."
     
-    # Case 2: One has parents, the other doesn't
+    # Case 2: One has parents, the other doesn't - make them share parents
     if parents1 and not parents2:
+        print(f"Debug: Making {person2} share {person1}'s parents: {parents1}")
         for parent in parents1:
-            assert_once(f"parent({parent}, {person2})")
+            result = assert_once(f"parent({parent}, {person2})")
+            if result == "new":
+                print(f"Debug: Added parent({parent}, {person2})")
         return "OK! I learned something."
     
     elif parents2 and not parents1:
+        print(f"Debug: Making {person1} share {person2}'s parents: {parents2}")
         for parent in parents2:
-            assert_once(f"parent({parent}, {person1})")
+            result = assert_once(f"parent({parent}, {person1})")
+            if result == "new":
+                print(f"Debug: Added parent({parent}, {person1})")
         return "OK! I learned something."
     
-    # Case 3: Neither has parents - we need to create a shared parent
-    elif not parents1 and not parents2:
-        return "OK! I learned something."
-    
-    # Case 4: Both have different parents - make them share all parents
-    else:
+    # Case 3: Both have different parents - merge their parent sets
+    elif parents1 and parents2:
         all_parents = parents1.union(parents2)
+        print(f"Debug: Merging parent sets: {all_parents}")
         for parent in all_parents:
             assert_once(f"parent({parent}, {person1})")
             assert_once(f"parent({parent}, {person2})")
-        
         parent_names = ', '.join(p.capitalize() for p in all_parents)
         return f"OK! I learned that both {person1.capitalize()} and {person2.capitalize()} have {parent_names} as their parents, making them full siblings."
     
+    # Case 4: Neither has parents - just establish them as siblings for now
+    # We'll use a "deferred sibling" approach - store the sibling relationship
+    # and infer parents later when we learn about them
+    else:
+        print(f"Debug: Neither {person1} nor {person2} has parents yet - deferring parent inference")
+        # Store the sibling relationship as a direct fact for now
+        assert_once(f"sibling_deferred({person1}, {person2})")
+        assert_once(f"sibling_deferred({person2}, {person1})")
+        return "OK! I learned something."
+    
+def trigger_deferred_sibling_inference():
+    """Check for deferred sibling relationships and apply parent sharing when parents are discovered"""
+    try:
+        print("Debug: Checking deferred sibling relationships...")
+        
+        # Get all deferred sibling pairs
+        deferred_siblings = safe_prolog_query("sibling_deferred(X, Y)")
+        
+        resolved_pairs = set()  # Track resolved pairs to avoid duplicate processing
+        
+        for rel in deferred_siblings:
+            if "X" in rel and "Y" in rel:
+                person1, person2 = rel["X"], rel["Y"]
+                
+                # Create a normalized pair key (alphabetical order)
+                pair_key = tuple(sorted([person1, person2]))
+                if pair_key in resolved_pairs:
+                    continue  # Skip if already processed
+                
+                # Get current parents
+                parents1 = get_parents(person1)
+                parents2 = get_parents(person2)
+                
+                # If one now has parents and the other doesn't, make them share
+                if parents1 and not parents2:
+                    print(f"Debug: Applying deferred inference - giving {person2} parents from {person1}: {parents1}")
+                    for parent in parents1:
+                        result = assert_once(f"parent({parent}, {person2})")
+                        if result == "new":
+                            print(f"Debug: Added deferred parent({parent}, {person2})")
+                    resolved_pairs.add(pair_key)
+                    
+                elif parents2 and not parents1:
+                    print(f"Debug: Applying deferred inference - giving {person1} parents from {person2}: {parents2}")
+                    for parent in parents2:
+                        result = assert_once(f"parent({parent}, {person1})")
+                        if result == "new":
+                            print(f"Debug: Added deferred parent({parent}, {person1})")
+                    resolved_pairs.add(pair_key)
+                    
+                elif parents1 and parents2 and parents1 != parents2:
+                    # Both have different parents - merge them
+                    all_parents = parents1.union(parents2)
+                    print(f"Debug: Applying deferred inference - merging parent sets: {all_parents}")
+                    for parent in all_parents:
+                        assert_once(f"parent({parent}, {person1})")
+                        assert_once(f"parent({parent}, {person2})")
+                    resolved_pairs.add(pair_key)
+                        
+    except Exception as e:
+        print(f"Debug: Error in deferred sibling inference: {e}")
+   
+def trigger_full_family_inference():
+    """Trigger comprehensive family relationship inference with conflict resolution"""
+    try:
+        print("Debug: Starting family inference...")
+        
+        # Get all people from various relationships to build complete person list
+        all_people = set()
+        for query_type in ["parent(X, Y)", "sibling(X, Y)", "male(X)", "female(X)", "married(X, Y)"]:
+            results = safe_prolog_query(query_type)
+            for result in results:
+                for key, value in result.items():
+                    if isinstance(value, str):
+                        all_people.add(value.lower())
+        
+        print(f"Debug: Found {len(all_people)} people: {sorted(all_people)}")
+        
+        # First, infer grandparent relationships
+        for person in all_people:
+            # Get their children
+            children_query = safe_prolog_query(f"parent({person}, X)")
+            children = {r["X"] for r in children_query if "X" in r}
+            
+            # For each child, get their children (grandchildren)
+            for child in children:
+                grandchildren_query = safe_prolog_query(f"parent({child}, Y)")
+                grandchildren = {r["Y"] for r in grandchildren_query if "Y" in r}
+                
+                # Make person grandparent of each grandchild
+                for grandchild in grandchildren:
+                    existing = safe_prolog_query(f"grandparent({person}, {grandchild})")
+                    if not existing:
+                        result = assert_once(f"grandparent({person}, {grandchild})")
+                        if result == "new":
+                            print(f"Debug: Inferred grandparent({person}, {grandchild})")
+        
+        # Then, infer uncle/aunt relationships (but avoid conflicts with grandparent relationships)
+        for person in all_people:
+            siblings_query = safe_prolog_query(f"sibling({person}, X)")
+            siblings = {r["X"] for r in siblings_query if "X" in r}
+            
+            children_query = safe_prolog_query(f"parent({person}, Y)")
+            children = {r["Y"] for r in children_query if "Y" in r}
+            
+            for sibling in siblings:
+                for child in children:
+                    # IMPORTANT: Check if sibling is already grandparent of child
+                    # If so, skip uncle/aunt relationship (grandparent takes precedence)
+                    if safe_prolog_query(f"grandparent({sibling}, {child})"):
+                        print(f"Debug: Skipping uncle/aunt({sibling}, {child}) - already grandparent")
+                        continue
+                    
+                    if safe_prolog_query(f"male({sibling})"):
+                        existing = safe_prolog_query(f"uncle({sibling}, {child})")
+                        if not existing:
+                            result = assert_once(f"uncle({sibling}, {child})")
+                            if result == "new":
+                                print(f"Debug: Inferred uncle({sibling}, {child})")
+                    elif safe_prolog_query(f"female({sibling})"):
+                        existing = safe_prolog_query(f"aunt({sibling}, {child})")
+                        if not existing:
+                            result = assert_once(f"aunt({sibling}, {child})")
+                            if result == "new":
+                                print(f"Debug: Inferred aunt({sibling}, {child})")
+                    
+    except Exception as e:
+        print(f"Debug: Error in family inference: {e}")
+
 def check_sibling_contradiction(person1, person2):
     """Check if making person1 and person2 siblings would create a contradiction"""
     person1, person2 = person1.lower(), person2.lower()
@@ -291,6 +426,34 @@ def parse_statement(prompt):
     # Handle empty input
     if not prompt:
         return "Please tell me something!"
+    
+    # Check if this is actually a question disguised as a statement
+    # Look for question-like patterns ending with "?"
+    if prompt.endswith("?"):
+        # Remove the "?" and treat as a yes/no question
+        statement_part = prompt.rstrip("?").strip()
+        
+        # Try to parse as "X is the Y of Z?" format
+        match = re.match(r"(\w+) is (?:a |an |the )?(father|mother|parent|child|son|daughter|brother|sister|sibling|uncle|aunt|grandfather|grandmother|husband|wife|spouse|nephew|niece|cousin) of (\w+)", statement_part, re.IGNORECASE)
+        if match:
+            a, rel, b = match.groups()
+            a, b = a.lower(), b.lower()
+            rel = rel.lower()
+            
+            # Validate names
+            if not is_valid_name(a) or not is_valid_name(b):
+                if a.lower() == 'who' or b.lower() == 'who':
+                    return "Invalid name! 'Who' is a reserved word for questions."
+                return "Names should only contain letters and cannot be reserved words!"
+            
+            # Use the enhanced typo correction
+            corrected_rel = correct_relationship_typo(rel)
+            
+            if corrected_rel is None:
+                return f"I don't recognize '{rel}'. Try using common family relationships."
+            
+            result = safe_prolog_query(f"{corrected_rel}({a}, {b})")
+            return "Yes!" if result else "No."
 
     patterns = [
         (r"(\w+) is (?:a |an |the )?(father|mother|parent|child|son|daughter|brother|sister|sibling|uncle|aunt|grandfather|grandmother|husband|wife|spouse|nephew|niece|cousin) of (\w+)", handle_single_relation),
@@ -322,7 +485,7 @@ def handle_single_relation(match):
     a, rel, b = match.groups()
     a, b = a.lower(), b.lower()
 
-    # Validate names using the new function
+    # Validate names
     if not is_valid_name(a) or not is_valid_name(b):
         if a.lower() == 'who' or b.lower() == 'who':
             return "Invalid name! 'Who' is a reserved word for questions."
@@ -353,6 +516,11 @@ def handle_single_relation(match):
         elif result == "exists":
             return "OK! I already knew that."
         
+        # After adding a parent, check for deferred siblings who need this parent
+        trigger_deferred_sibling_inference()
+        # Then run full family inference ONCE
+        trigger_full_family_inference()
+        
     elif rel in ["son", "daughter", "child"]:
         if check_would_create_cycle(b, a):
             return "That's impossible!"
@@ -361,13 +529,20 @@ def handle_single_relation(match):
             return "Error adding that relationship!"
         elif result == "exists":
             return "OK! I already knew that."
+        
+        # After adding a parent, check for deferred siblings who need this parent
+        trigger_deferred_sibling_inference()
+        # Then run full family inference ONCE
+        trigger_full_family_inference()
 
     elif rel in ["brother", "sister", "sibling"]:
-        # Handle sibling relationship with smart inference
-        result = handle_sibling_with_smart_inference(a, b, rel)
+        # Assert gender first
         if gender:
             assert_once(f"{gender}({a})")
-        return result
+        
+        # Handle sibling relationship with smart inference
+        result = handle_sibling_with_smart_inference(a, b, rel)
+        return result  # Don't run inference here - let the parent addition trigger it
         
     elif rel in ["grandfather", "grandmother"]:
         if check_would_create_cycle(a, b):
@@ -379,6 +554,10 @@ def handle_single_relation(match):
             return "OK! I already knew that."
         
     elif rel in ["uncle", "aunt"]:
+        # Check if this would conflict with a grandparent relationship
+        if safe_prolog_query(f"grandparent({a}, {b})"):
+            return f"That's impossible! {a.capitalize()} is already the grandparent of {b.capitalize()}."
+        
         result = assert_once(f"{rel}({a}, {b})")
         if result == "error":
             return "Error adding that relationship!"
@@ -393,6 +572,9 @@ def handle_single_relation(match):
             return "OK! I already knew that."
         
     elif rel == "cousin":
+        # Check for cousin contradictions
+        if check_cousin_contradiction(a, b):
+            return "That's impossible!"
         existing = safe_prolog_query(f"cousin({a}, {b})")
         if existing:
             return "OK! I already knew that."
@@ -423,6 +605,7 @@ def handle_single_relation(match):
         assert_once(f"{gender}({a})")
 
     return "OK! I learned something."
+
 
 def handle_siblings(match):
     a, b = match.groups()
@@ -465,8 +648,8 @@ def handle_siblings_of(match):
         return "That's impossible!"
     
     # Use the smart sibling inference for both relationships
-    result1 = handle_sibling_with_smart_inference(person1, target, relation)
-    result2 = handle_sibling_with_smart_inference(person2, target, relation)
+    handle_sibling_with_smart_inference(person1, target, relation)
+    handle_sibling_with_smart_inference(person2, target, relation)
     
     # Assert genders
     assert_once(f"{gender1}({person1})")
@@ -477,6 +660,55 @@ def handle_siblings_of(match):
     
     return "OK! I learned something."
 
+def check_cousin_contradiction(person1, person2):
+    """Check if making person1 and person2 cousins would create a contradiction"""
+    person1, person2 = person1.lower(), person2.lower()
+    
+    try:
+        # Check if they are already parent-child related
+        if (safe_prolog_query(f"parent({person1}, {person2})") or 
+            safe_prolog_query(f"parent({person2}, {person1})")):
+            return True
+            
+        # Check if they are already grandparent-grandchild related
+        if (safe_prolog_query(f"grandparent({person1}, {person2})") or 
+            safe_prolog_query(f"grandparent({person2}, {person1})")):
+            return True
+            
+        # Check if they are already uncle/aunt - nephew/niece related
+        if (safe_prolog_query(f"uncle({person1}, {person2})") or 
+            safe_prolog_query(f"uncle({person2}, {person1})") or
+            safe_prolog_query(f"aunt({person1}, {person2})") or 
+            safe_prolog_query(f"aunt({person2}, {person1})")):
+            return True
+            
+        # Check if they are siblings (cousins should not be siblings)
+        if safe_prolog_query(f"sibling({person1}, {person2})"):
+            return True
+        
+        # Check if they share any children (co-parents cannot be cousins)
+        children1_result = safe_prolog_query(f"parent({person1}, X)")
+        children1 = {r["X"] for r in children1_result if "X" in r}
+        
+        children2_result = safe_prolog_query(f"parent({person2}, X)")
+        children2 = {r["X"] for r in children2_result if "X" in r}
+        
+        # If they share any children, they cannot be cousins
+        shared_children = children1.intersection(children2)
+        if shared_children:
+            return True
+        
+        # Check if they are married/spouses (spouses cannot be cousins)
+        if (safe_prolog_query(f"married({person1}, {person2})") or 
+            safe_prolog_query(f"married({person2}, {person1})") or
+            safe_prolog_query(f"spouse({person1}, {person2})")):
+            return True
+            
+        return False
+        
+    except Exception:
+        return False
+    
 def handle_cousins(match):
     """Handle 'X and Y are cousins'"""
     a, b = match.groups()
@@ -489,6 +721,10 @@ def handle_cousins(match):
 
     if check_self_relation(a, b):
         return "That's impossible!"
+    
+    # Check for cousin-specific contradictions
+    if check_cousin_contradiction(a, b):
+        return "That's impossible!"
 
     # Check if cousin relationship already exists
     existing = safe_prolog_query(f"cousin({a}, {b})")
@@ -500,6 +736,7 @@ def handle_cousins(match):
     assert_once(f"cousin({b}, {a})")
     
     return "OK! I learned something."
+
 
 def handle_spouses(match):
     """Handle 'X and Y are spouses'"""
@@ -536,6 +773,44 @@ def handle_spouses(match):
     
     return "OK! I learned something."
 
+def trigger_sibling_uncle_aunt_inference():
+    """Trigger uncle/aunt inference when new parent relationships are added"""
+    try:
+        # Find all people who have siblings
+        all_people = set()
+        
+        # Get all people from sibling relationships
+        sibling_results = safe_prolog_query("sibling(X, Y)")
+        for result in sibling_results:
+            if "X" in result and "Y" in result:
+                all_people.add(result["X"])
+                all_people.add(result["Y"])
+        
+        # For each person who has siblings
+        for person in all_people:
+            # Get their siblings
+            siblings_query = safe_prolog_query(f"sibling({person}, X)")
+            siblings = {r["X"] for r in siblings_query if "X" in r}
+            
+            # Get their children
+            children_query = safe_prolog_query(f"parent({person}, Y)")
+            children = {r["Y"] for r in children_query if "Y" in r}
+            
+            # Make each sibling an uncle/aunt of each child
+            for sibling in siblings:
+                for child in children:
+                    if safe_prolog_query(f"male({sibling})"):
+                        existing = safe_prolog_query(f"uncle({sibling}, {child})")
+                        if not existing:
+                            assert_once(f"uncle({sibling}, {child})")
+                    elif safe_prolog_query(f"female({sibling})"):
+                        existing = safe_prolog_query(f"aunt({sibling}, {child})")
+                        if not existing:
+                            assert_once(f"aunt({sibling}, {child})")
+                            
+    except Exception as e:
+        print(f"Debug: Error in sibling uncle/aunt inference: {e}")
+
 def handle_parents(match):
     a, b, c = match.groups()
     a, b, c = a.lower(), b.lower(), c.lower()
@@ -563,6 +838,9 @@ def handle_parents(match):
     
     if result1 == "error" or result2 == "error":
         return "Error adding that relationship!"
+    
+    # Trigger uncle/aunt inference after adding parents
+    trigger_sibling_uncle_aunt_inference()
     
     # If one was new and one existed, still say we learned something
     if result1 == "new" or result2 == "new":
@@ -799,7 +1077,7 @@ def parse_question(prompt):
         (r"Are (\w+) and (\w+) (?:the )?parents of (\w+)", handle_yesno_parents),
         (r"Are (\w+), (\w+)(?:, and (\w+))? children of (\w+)", handle_yesno_children),
         (r"Are (\w+) and (\w+) children of (\w+)", handle_yesno_two_children),
-        (r"Who (?:is|are) (?:the |a |an )?(father|mother|parent|child|son|daughter|brother|sister|sibling|siblings|brothers|sisters|uncle|aunt|grandfather|grandmother|husband|wife|spouse|nephew|niece|cousin|children|parents|sons|daughters|uncles|aunts|nephews|nieces|cousins) of (\w+)", handle_list_query),
+        (r"Who (?:is|are) (?:the |a |an )?(father|mother|parent|child|son|daughter|brother|sister|sibling|siblings|brothers|sisters|uncle|aunt|grandfather|grandmother|grandparent|grandparents|grandfathers|grandmothers|husband|wife|spouse|nephew|niece|cousin|children|parents|sons|daughters|uncles|aunts|nephews|nieces|cousins|grandchildren) of (\w+)", handle_list_query),
         (r"Who is (\w+) married to", handle_who_married_to),
         (r"Who is the spouse of (\w+)", handle_who_spouse),          
         (r"Are (\w+) and (\w+) relatives", handle_relative_question),
@@ -1030,12 +1308,15 @@ def handle_list_query(match):
         'aunts': 'aunt',
         'nephews': 'nephew',
         'nieces': 'niece',
-        'cousins': 'cousin'
+        'cousins': 'cousin',
+        'grandparents': 'grandparent',
+        'grandfathers': 'grandfather',
+        'grandmothers': 'grandmother',
+        'grandchildren': 'grandchild'
     }
 
     # Special case for "parents" - need to find all parents
     if rel == "parents":
-        # Query for both fathers and mothers (includes step-parents through marriage)
         fathers = safe_prolog_query(f"father(X, {name})")
         mothers = safe_prolog_query(f"mother(X, {name})")
         
@@ -1045,9 +1326,35 @@ def handle_list_query(match):
         all_parents = father_names.union(mother_names)
         
         if all_parents:
-            return ", ".join(name.capitalize() for name in sorted(all_parents))
+            return ", ".join(n.capitalize() for n in sorted(all_parents))
         else:
             return "No one found."
+    
+    # Special case for "grandparents"
+    if rel == "grandparents":
+        grandfathers = safe_prolog_query(f"grandfather(X, {name})")
+        grandmothers = safe_prolog_query(f"grandmother(X, {name})")
+        
+        grandfather_names = {r["X"] for r in grandfathers if "X" in r}
+        grandmother_names = {r["X"] for r in grandmothers if "X" in r}
+        
+        all_grandparents = grandfather_names.union(grandmother_names)
+        
+        if all_grandparents:
+            return ", ".join(n.capitalize() for n in sorted(all_grandparents))
+        else:
+            return "No one found."
+    
+    # Special case for "grandchildren"
+    if rel == "grandchildren":
+        result = safe_prolog_query(f"grandparent({name}, X)")
+        names = {r["X"] for r in result if "X" in r}
+        
+        if names:
+            return ", ".join(n.capitalize() for n in sorted(names))
+        else:
+            return "No one found."
+    
     # Convert to singular if it's a plural form
     if rel in plural_to_singular:
         rel = plural_to_singular[rel]
@@ -1063,6 +1370,8 @@ def handle_list_query(match):
     # Special case for children
     if rel == 'child':
         query = f"child(X, {name})"
+    elif rel == 'grandchild':
+        query = f"grandparent({name}, X)"
     else:
         query = f"{rel}(X, {name})"
     
@@ -1070,7 +1379,7 @@ def handle_list_query(match):
     names = {r["X"] for r in result if "X" in r}
     
     if names:
-        return ", ".join(name.capitalize() for name in sorted(names))
+        return ", ".join(n.capitalize() for n in sorted(names))
     else:
         return "No one found."
 
@@ -1137,8 +1446,86 @@ def handle_relative_question(match):
             return "Invalid name! 'Who' is a reserved word for questions."
         return "Names should only contain letters and cannot be reserved words!"
     
-    result = safe_prolog_query(f"relative({a}, {b})")
-    return "Yes!" if result else "No."
+    # Check if they're the same person
+    if a == b:
+        return "No."
+    
+    # Check all possible relationship types
+    relationship_checks = [
+        f"parent({a}, {b})",
+        f"parent({b}, {a})",
+        f"father({a}, {b})",
+        f"father({b}, {a})",
+        f"mother({a}, {b})",
+        f"mother({b}, {a})",
+        f"sibling({a}, {b})",
+        f"brother({a}, {b})",
+        f"brother({b}, {a})",
+        f"sister({a}, {b})",
+        f"sister({b}, {a})",
+        f"grandparent({a}, {b})",
+        f"grandparent({b}, {a})",
+        f"grandfather({a}, {b})",
+        f"grandfather({b}, {a})",
+        f"grandmother({a}, {b})",
+        f"grandmother({b}, {a})",
+        f"uncle({a}, {b})",
+        f"uncle({b}, {a})",
+        f"aunt({a}, {b})",
+        f"aunt({b}, {a})",
+        f"nephew({a}, {b})",
+        f"nephew({b}, {a})",
+        f"niece({a}, {b})",
+        f"niece({b}, {a})",
+        f"cousin({a}, {b})",
+        f"married({a}, {b})",
+        f"married({b}, {a})",
+        f"spouse({a}, {b})"
+    ]
+    
+    # Check each relationship type
+    for check in relationship_checks:
+        if safe_prolog_query(check):
+            return "Yes!"
+    
+    # If no direct relationship found, check if they're connected through family tree
+    # This is a more comprehensive check for distant relatives
+    
+    # Check if they share any common ancestors (parents, grandparents, etc.)
+    ancestors_a = get_all_ancestors(a)
+    ancestors_b = get_all_ancestors(b)
+    
+    if ancestors_a.intersection(ancestors_b):
+        return "Yes!"
+    
+    # Check if one is ancestor of the other
+    if a in ancestors_b or b in ancestors_a:
+        return "Yes!"
+    
+    return "No."
+
+def get_all_ancestors(person):
+    """Get all ancestors of a person (parents, grandparents, great-grandparents, etc.)"""
+    ancestors = set()
+    to_check = [person]
+    checked = set()
+    
+    while to_check:
+        current = to_check.pop()
+        if current in checked:
+            continue
+        checked.add(current)
+        
+        # Get parents
+        parents_query = safe_prolog_query(f"parent(P, {current})")
+        parents = {r["P"] for r in parents_query if "P" in r}
+        
+        for parent in parents:
+            if parent not in ancestors and parent != person:
+                ancestors.add(parent)
+                to_check.append(parent)
+    
+    return ancestors
 
 # === Main Loop ===
 
